@@ -1,0 +1,44 @@
+package pl.gitdzialki;
+
+import com.comphenix.protocol.PacketType;
+import com.comphenix.protocol.events.ListenerPriority;
+import com.comphenix.protocol.events.PacketAdapter;
+import com.comphenix.protocol.events.PacketEvent;
+import org.bukkit.Location;
+import org.bukkit.World;
+import org.bukkit.entity.Player;
+
+public class PistonPacketListener extends PacketAdapter {
+
+    private final PlotManager plotManager;
+
+    public PistonPacketListener(Main plugin, PlotManager plotManager) {
+        super(plugin, ListenerPriority.NORMAL, PacketType.Play.Client.BLOCK_PLACE);
+        this.plotManager = plotManager;
+    }
+
+    @Override
+    public void onPacketReceiving(PacketEvent event) {
+        Player player = event.getPlayer();
+        if (player == null) {
+            return;
+        }
+
+        // Pobierz lokalizację bloku, na który kliknął gracz
+        if (event.getPacket().getBlockPositionModifier().read(0).length > 0) {
+            World world = player.getWorld();
+            int blockX = event.getPacket().getBlockPositionModifier().read(0).getX();
+            int blockY = event.getPacket().getBlockPositionModifier().read(0).getY();
+            int blockZ = event.getPacket().getBlockPositionModifier().read(0).getZ();
+            Location blockLocation = new Location(world, blockX, blockY, blockZ);
+
+            // Sprawdź, czy blok jest tłokiem
+            if (plotManager.isPiston(blockLocation)) {
+                // Sprawdź, czy gracz jest właścicielem działki
+                if (!plotManager.isPlotOwner(player, blockLocation)) {
+                    event.setCancelled(true);
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,69 @@
+package pl.gitdzialki;
+
+import com.sk89q.worldguard.WorldGuard;
+import com.sk89q.worldguard.bukkit.WorldGuardPlugin;
+import com.sk89q.worldguard.protection.flags.StateFlag;
+import com.sk89q.worldguard.protection.flags.registry.FlagRegistry;
+import org.bukkit.plugin.java.JavaPlugin;
+
+public class Main extends JavaPlugin {
+
+    private PlotManager plotManager;
+
+    @Override
+    public void onEnable() {
+        // Inicjalizacja PlotManager z WorldGuard
+        WorldGuardPlugin worldGuard = getWorldGuard();
+        if (worldGuard == null) {
+            getLogger().severe("WorldGuard nie jest zainstalowany! Plugin GitDzialki nie może działać.");
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+
+        plotManager = new PlotManager(this, worldGuard);
+        plotManager.loadPlots(); // Wczytanie zapisanych regionów działek
+
+        // Rejestracja komend
+        getCommand("ddaj").setExecutor(new DzialkaCommand(this));
+        getCommand("dustaw").setExecutor(new DzialkaCommand(this));
+        getCommand("ddom").setExecutor(new DzialkaCommand(this));
+        getCommand("dusun").setExecutor(new DzialkaCommand(this));
+
+        // Rejestracja listenerów
+        getServer().getPluginManager().registerEvents(new DzialkaListener(plotManager, this), this);
+        getServer().getPluginManager().registerEvents(new PlayerMoveListener(this), this);
+
+        // Rejestracja flag WorldGuarda (opcjonalne, jeśli chcesz dodać własne flagi)
+        registerWorldGuardFlags();
+
+        getLogger().info("Plugin GitDzialki włączony z WorldGuard!");
+    }
+
+    @Override
+    public void onDisable() {
+        // Zapisanie regionów działek przed wyłączeniem pluginu
+        if (plotManager != null) {
+            plotManager.savePlots();
+        }
+        getLogger().info("Plugin GitDzialki wyłączony!");
+    }
+
+    public PlotManager getPlotManager() {
+        return plotManager;
+    }
+
+    private WorldGuardPlugin getWorldGuard() {
+        return (WorldGuardPlugin) getServer().getPluginManager().getPlugin("WorldGuard");
+    }
+
+    private void registerWorldGuardFlags() {
+        FlagRegistry registry = WorldGuard.getInstance().getFlagRegistry();
+        try {
+            // Rejestracja flagi GitDzialki, jeśli chcesz dodać własne flagi (np. do oznaczania działek)
+            StateFlag plotFlag = new StateFlag("git-dzialki", false);
+            registry.register(plotFlag);
+        } catch (Exception e) {
+            getLogger().warning("Nie udało się zarejestrować flagi WorldGuarda: " + e.getMessage());
+        }
+    }
+}

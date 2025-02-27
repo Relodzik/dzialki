@@ -1,0 +1,43 @@
+package pl.gitdzialki;
+
+
+import com.sk89q.worldedit.bukkit.BukkitAdapter;
+import com.sk89q.worldguard.WorldGuard;
+import com.sk89q.worldguard.protection.managers.RegionManager;
+import org.bukkit.ChatColor;
+import org.bukkit.Material;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.inventory.meta.BlockStateMeta;
+import org.bukkit.Location;
+
+public class BlockListeners implements Listener {
+    private final Main plugin;
+
+    public BlockListeners(Main plugin) {
+        this.plugin = plugin;
+    }
+
+    @EventHandler
+    public void onShulkerBreak(BlockBreakEvent event) {
+        if (event.getBlock().getType() != Material.RED_SHULKER_BOX) return;
+
+        BlockStateMeta meta = (BlockStateMeta) event.getPlayer().getInventory().getItemInMainHand().getItemMeta();
+        if (meta != null && meta.getDisplayName().equals("Serce Działki")) {
+            deletePlotRegion(event.getPlayer(), event.getBlock().getLocation());
+        }
+    }
+
+    private void deletePlotRegion(Player player, Location loc) {
+        com.sk89q.worldedit.world.World world = BukkitAdapter.adapt(loc.getWorld());
+        RegionManager regionManager = WorldGuard.getInstance().getPlatform().getRegionContainer().get(world);
+        String regionId = "dzialka_" + player.getName();
+
+        if (regionManager.hasRegion(regionId)) {
+            regionManager.removeRegion(regionId);
+            player.sendMessage(ChatColor.RED + "Działka usunięta!");
+        }
+    }
+}

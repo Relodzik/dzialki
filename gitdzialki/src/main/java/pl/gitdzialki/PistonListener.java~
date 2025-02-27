@@ -1,0 +1,34 @@
+package pl.gitdzialki;
+
+import org.bukkit.Location;
+import org.bukkit.block.Block;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.block.BlockPistonExtendEvent;
+import org.bukkit.event.block.BlockPistonRetractEvent;
+
+public class PistonListener implements Listener {
+    private final PlotManager plotManager;
+
+    public PistonListener(PlotManager plotManager) {
+        this.plotManager = plotManager;
+    }
+
+    @EventHandler
+    public void onPistonExtend(BlockPistonExtendEvent event) {
+        Block piston = event.getBlock();
+        Location loc = piston.getLocation();
+        if (!plotManager.isPlot(loc)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onPistonRetract(BlockPistonRetractEvent event) {
+        Block piston = event.getBlock();
+        Location loc = piston.getLocation();
+        if (!plotManager.isPlot(loc)) {
+            event.setCancelled(true);
+        }
+    }
+}

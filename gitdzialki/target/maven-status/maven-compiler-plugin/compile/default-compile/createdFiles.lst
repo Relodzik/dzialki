@@ -1,0 +1,5 @@
+pl\gitdzialki\Main.class
+pl\gitdzialki\DzialkaCommand.class
+pl\gitdzialki\DzialkaListener.class
+pl\gitdzialki\PlayerMoveListener.class
+pl\gitdzialki\PlotManager.class

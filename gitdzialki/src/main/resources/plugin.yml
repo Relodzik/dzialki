@@ -1,0 +1,22 @@
+name: GitDzialki
+version: 1.0
+main: pl.gitdzialki.Main
+api-version: 1.21
+author: relod
+commands:
+  ddaj:
+    description: Daje Serce Działki
+    usage: /<command>
+  dustaw:
+    description: Ustawia lokalizację domu na działce
+    usage: /<command>
+  ddom:
+    description: Teleportuje na działkę
+    usage: /<command>
+  dusun:
+    description: Usuwa działkę gracza
+    usage: /<command> <TAG>
+permissions:
+  gitdzialki.admin:
+    description: Pozwala na administrowanie działkami (np. usuwanie)
+    default: op
