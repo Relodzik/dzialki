@@ -1,5 +1,10 @@
 pl\gitdzialki\Main.class
 pl\gitdzialki\DzialkaCommand.class
 pl\gitdzialki\DzialkaListener.class
-pl\gitdzialki\PlayerMoveListener.class
 pl\gitdzialki\PlotManager.class
+pl\gitdzialki\RedstoneTrackingManager$2.class
+pl\gitdzialki\RedstoneTrackingManager.class
+pl\gitdzialki\DispenserProtectionListener.class
+pl\gitdzialki\PlayerMoveListener.class
+pl\gitdzialki\RedstoneTrackingManager$1.class
+pl\gitdzialki\EnhancedPlotProtectionListener.class

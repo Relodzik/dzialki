@@ -39,8 +39,9 @@ public class DzialkaCommand implements CommandExecutor {
                 return true;
             }
             Location location = player.getLocation();
+            // Zapisuj pełną lokalizację, w tym yaw i pitch
             plotManager.updatePlotLocation(player, location);
-            player.sendMessage(ChatColor.GREEN + "Przeniesiono działkę na aktualną pozycję!");
+            player.sendMessage(ChatColor.GREEN + "Przeniesiono działkę na aktualną pozycję i kierunek patrzenia!");
             return true;
         } else if (command.getName().equalsIgnoreCase("ddom")) {
             if (!plotManager.hasPlot(player)) {

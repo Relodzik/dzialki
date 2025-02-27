@@ -5,13 +5,11 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
-import org.bukkit.block.Dispenser;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
-import org.bukkit.event.block.BlockDispenseEvent;
 import org.bukkit.event.block.BlockFromToEvent;
 import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.block.BlockPistonRetractEvent;
@@ -289,43 +287,71 @@ public class DzialkaListener implements Listener {
     private boolean canMoveBlock(Location pistonLoc, Location from, Location to) {
         boolean fromInPlot = plotManager.isPlot(from);
         boolean toInPlot = plotManager.isPlot(to);
+        boolean pistonInPlot = plotManager.isPlot(pistonLoc);
 
-        // Jeśli blok ani w punkcie startowym, ani docelowym nie znajduje się na działce – ruch jest dozwolony
-        if (!fromInPlot && !toInPlot) {
+        // Jeśli wszystko jest poza działkami, pozwól
+        if (!fromInPlot && !toInPlot && !pistonInPlot) {
             return true;
         }
 
-        // Jeżeli którykolwiek punkt dotyczy działki, pistoń musi się w niej znajdować,
-        // by ruch mógł być wykonany
-        if (!plotManager.isPlot(pistonLoc)) {
-            return false;
-        }
+        // Sprawdź własność bloków
+        UUID fromOwner = fromInPlot ? plotManager.getPlotOwner(from) : null;
+        UUID toOwner = toInPlot ? plotManager.getPlotOwner(to) : null;
+        UUID pistonOwner = pistonInPlot ? plotManager.getPlotOwner(pistonLoc) : null;
 
-        // Pobieramy właściciela działki, w której znajduje się pistoń – zakładamy, że pistoń umieszczony na terenie
-        // danej działki należy do jej właściciela
+        // Scenariusz 1: Jeśli blok źródłowy jest na działce - jego właściciel musi być blisko pistonu
         if (fromInPlot) {
-            if (!plotManager.getPlotOwner(pistonLoc).equals(plotManager.getPlotOwner(from))) {
-                return false;
+            // Jeśli pistoń jest na działce tego samego właściciela, pozwól
+            if (pistonInPlot && pistonOwner != null && fromOwner != null && pistonOwner.equals(fromOwner)) {
+                return true;
             }
-        }
-        if (toInPlot) {
-            if (!plotManager.getPlotOwner(pistonLoc).equals(plotManager.getPlotOwner(to))) {
-                return false;
+
+            // Jeśli pistoń jest poza działką
+            if (!pistonInPlot) {
+                // Sprawdź, czy właściciel jest w pobliżu pistonu
+                boolean ownerNearby = false;
+                for (Player player : pistonLoc.getWorld().getPlayers()) {
+                    if (player.getUniqueId().equals(fromOwner) && player.getLocation().distance(pistonLoc) <= 5.0) {
+                        ownerNearby = true;
+                        break;
+                    }
+                }
+
+                // Jeśli właściciel działki źródłowej nie jest przy pistonie, zablokuj
+                if (!ownerNearby) {
+                    return false;
+                }
             }
         }
 
-        // Dodatkowo – nie pozwalamy na ruch z działki na zewnątrz ani z zewnątrz do działki
-        if (fromInPlot && !toInPlot) {
-            return false;
-        }
-        if (!fromInPlot && toInPlot) {
-            return false;
-        }
-        // Jeśli oba punkty są na działce, to muszą należeć do tej samej działki (czyli mieć tego samego właściciela)
-        if (fromInPlot && toInPlot) {
-            if (!plotManager.getPlotOwner(from).equals(plotManager.getPlotOwner(to))) {
-                return false;
+        // Scenariusz 2: Jeśli blok docelowy jest na działce - jego właściciel musi być blisko pistonu
+        if (toInPlot) {
+            // Jeśli pistoń jest na działce tego samego właściciela, pozwól
+            if (pistonInPlot && pistonOwner != null && toOwner != null && pistonOwner.equals(toOwner)) {
+                return true;
             }
+
+            // Jeśli pistoń jest poza działką
+            if (!pistonInPlot) {
+                // Sprawdź, czy właściciel jest w pobliżu pistonu
+                boolean ownerNearby = false;
+                for (Player player : pistonLoc.getWorld().getPlayers()) {
+                    if (player.getUniqueId().equals(toOwner) && player.getLocation().distance(pistonLoc) <= 5.0) {
+                        ownerNearby = true;
+                        break;
+                    }
+                }
+
+                // Jeśli właściciel działki docelowej nie jest przy pistonie, zablokuj
+                if (!ownerNearby) {
+                    return false;
+                }
+            }
+        }
+
+        // Scenariusz 3: Jeśli blok źródłowy i docelowy należą do różnych właścicieli - zawsze blokuj
+        if (fromInPlot && toInPlot && !fromOwner.equals(toOwner)) {
+            return false;
         }
 
         return true;
@@ -364,11 +390,12 @@ public class DzialkaListener implements Listener {
         if (bucketType == Material.WATER_BUCKET ||
                 bucketType == Material.LAVA_BUCKET ||
                 bucketType == Material.POWDER_SNOW_BUCKET ||
-                bucketType == Material.MILK_BUCKET ||
                 bucketType == Material.COD_BUCKET ||
                 bucketType == Material.SALMON_BUCKET ||
                 bucketType == Material.TROPICAL_FISH_BUCKET ||
-                bucketType == Material.PUFFERFISH_BUCKET) {
+                bucketType == Material.PUFFERFISH_BUCKET ||
+                bucketType == Material.TADPOLE_BUCKET ||
+                bucketType == Material.AXOLOTL_BUCKET) {
             if (plotManager.isPlot(location)) {
                 UUID ownerUUID = plotManager.getPlotOwner(location);
                 if (ownerUUID != null && !ownerUUID.equals(player.getUniqueId())) {
@@ -390,40 +417,5 @@ public class DzialkaListener implements Listener {
                 material == Material.MANGROVE_BOAT ||
                 material == Material.CHERRY_BOAT ||
                 material == Material.BAMBOO_RAFT;
-    }
-
-    @EventHandler
-    public void onDispense(BlockDispenseEvent event) {
-        Block dispenserBlock = event.getBlock(); // Blok dyspensera
-        ItemStack item = event.getItem(); // Przedmiot wylatujący z dyspensera
-
-        // Sprawdź, czy dyspenser wylewa kubełek z płynem lub substancją
-        if (isBucketItem(item.getType())) {
-            Location dispenserLoc = dispenserBlock.getLocation();
-            Location targetLoc = dispenserBlock.getRelative(event.getVelocity().getBlockX() != 0 ? BlockFace.valueOf("X" + (event.getVelocity().getBlockX() > 0 ? "POS" : "NEG")) :
-                    event.getVelocity().getBlockZ() != 0 ? BlockFace.valueOf("Z" + (event.getVelocity().getBlockZ() > 0 ? "POS" : "NEG")) :
-                            BlockFace.UP).getLocation(); // Przybliżona lokalizacja docelowa (w zależności od kierunku)
-
-            boolean dispenserInPlot = plotManager.isPlot(dispenserLoc);
-            boolean targetInPlot = plotManager.isPlot(targetLoc);
-
-            // Jeśli dyspenser jest poza działką, a cel jest w działce, zablokuj wylewanie
-            if (!dispenserInPlot && targetInPlot) {
-                plugin.getLogger().warning("Zablokowano wylewanie " + item.getType() + " z dyspensera w " + dispenserLoc + " na działkę w " + targetLoc);
-                event.setCancelled(true);
-            }
-        }
-    }
-
-    // Metoda pomocnicza: Sprawdź, czy item to kubełek z płynem lub substancją
-    private boolean isBucketItem(Material material) {
-        return material == Material.WATER_BUCKET ||
-                material == Material.LAVA_BUCKET ||
-                material == Material.POWDER_SNOW_BUCKET ||
-                material == Material.MILK_BUCKET ||
-                material == Material.COD_BUCKET ||
-                material == Material.SALMON_BUCKET ||
-                material == Material.TROPICAL_FISH_BUCKET ||
-                material == Material.PUFFERFISH_BUCKET;
     }
 }

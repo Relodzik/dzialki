@@ -2,10 +2,13 @@ package pl.gitdzialki;
 
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 
 public class DzialkaCommand implements CommandExecutor {
 
@@ -26,12 +29,15 @@ public class DzialkaCommand implements CommandExecutor {
         PlotManager plotManager = plugin.getPlotManager();
 
         if (command.getName().equalsIgnoreCase("ddaj")) {
-            if (plotManager.hasPlot(player)) {
-                player.sendMessage(ChatColor.RED + "Posiadasz już działkę!");
-                return true;
+            // Dajemy graczowi przedmiot Serce Działki zamiast tworzyć działkę
+            ItemStack serceDzialki = new ItemStack(Material.RED_SHULKER_BOX);
+            ItemMeta meta = serceDzialki.getItemMeta();
+            if (meta != null) {
+                meta.setDisplayName(ChatColor.RED + "Serce Działki");
+                serceDzialki.setItemMeta(meta);
             }
-            Location location = player.getLocation();
-            plotManager.createPlot(player, location);
+            player.getInventory().addItem(serceDzialki);
+            player.sendMessage(ChatColor.GREEN + "Otrzymałeś Serce Działki! Postaw je, aby utworzyć działkę.");
             return true;
         } else if (command.getName().equalsIgnoreCase("dustaw")) {
             if (!plotManager.hasPlot(player)) {
