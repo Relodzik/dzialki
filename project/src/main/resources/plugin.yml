@@ -1,0 +1,27 @@
+name: Dzialki
+version: '${project.version}'
+main: com.example.dzialki.Dzialki
+api-version: '1.21'
+authors: [YourName]
+description: Plugin dodający działki na serwer Minecraft
+commands:
+  dzialka:
+    description: Główna komenda do zarządzania działkami
+    usage: /dzialka <daj|usun|dom|tp|ustaw|zapros|dolacz|wyrzuc>
+    aliases: [plot, działka]
+permissions:
+  dzialka.admin.daj:
+    description: Pozwala na dawanie Serc Działki
+    default: op
+  dzialka.admin.usun:
+    description: Pozwala na usuwanie działek
+    default: op
+  dzialka.admin.tp:
+    description: Pozwala na teleportację do działek
+    default: op
+  dzialka.admin.kick:
+    description: Pozwala na wyrzucanie graczy z działek
+    default: op
+  dzialka.use:
+    description: Pozwala na używanie podstawowych komend działek
+    default: true
