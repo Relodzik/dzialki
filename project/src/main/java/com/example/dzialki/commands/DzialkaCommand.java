@@ -47,6 +47,7 @@ public class DzialkaCommand implements CommandExecutor {
             case "zapros" -> handleInvitePlayer(player, args);
             case "dolacz" -> handleJoinPlot(player, args);
             case "wyrzuc" -> handleKickPlayer(player, args);
+            case "opusc" -> handleLeavePlot(player);
             default -> sendHelp(player);
         }
 
@@ -63,6 +64,7 @@ public class DzialkaCommand implements CommandExecutor {
         player.sendMessage(ChatColor.YELLOW + "/dzialka zapros <gracz>" + ChatColor.GRAY + " - Zaprasza gracza do działki");
         player.sendMessage(ChatColor.YELLOW + "/dzialka dolacz <TAG>" + ChatColor.GRAY + " - Dołącza do działki");
         player.sendMessage(ChatColor.YELLOW + "/dzialka wyrzuc <gracz>" + ChatColor.GRAY + " - Wyrzuca gracza z działki");
+        player.sendMessage(ChatColor.YELLOW + "/dzialka opusc" + ChatColor.GRAY + " - Opuszcza działkę (tylko członkowie)");
     }
 
     private void handleGivePlotHeart(Player player) {
@@ -295,6 +297,40 @@ public class DzialkaCommand implements CommandExecutor {
             Location safeLocation = plotManager.findSafeLocationOutsidePlot(plot);
             target.teleport(safeLocation);
             target.sendMessage(ChatColor.RED + "Zostałeś teleportowany poza teren działki!");
+        }
+    }
+
+    private void handleLeavePlot(Player player) {
+        Plot plot = plotManager.getPlayerPlot(player.getUniqueId());
+
+        if (plot == null) {
+            player.sendMessage(ChatColor.RED + "Nie jesteś członkiem żadnej działki!");
+            return;
+        }
+
+        // Sprawdź, czy gracz jest właścicielem działki - właściciel nie może opuścić działki
+        if (plot.isOwner(player.getUniqueId())) {
+            player.sendMessage(ChatColor.RED + "Nie możesz opuścić swojej działki! Jeśli chcesz się jej pozbyć, musisz ją usunąć.");
+            return;
+        }
+
+        // Usuń gracza z działki
+        plot.removeMember(player.getUniqueId());
+        plotManager.removePlayerFromPlot(player.getUniqueId());
+
+        player.sendMessage(ChatColor.GREEN + "Opuściłeś działkę " + plot.getTag() + "!");
+
+        // Powiadom właściciela jeśli jest online
+        Player owner = Bukkit.getPlayer(plot.getOwner());
+        if (owner != null) {
+            owner.sendMessage(ChatColor.YELLOW + player.getName() + " opuścił twoją działkę!");
+        }
+
+        // Teleportuj gracza poza teren działki jeśli się na niej znajduje
+        if (plot.isInPlot(player.getLocation())) {
+            Location safeLocation = plotManager.findSafeLocationOutsidePlot(plot);
+            player.teleport(safeLocation);
+            player.sendMessage(ChatColor.YELLOW + "Zostałeś teleportowany poza teren działki!");
         }
     }
 }

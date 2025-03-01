@@ -1,5 +1,6 @@
 com\example\dzialki\listeners\PlotProtectionListener.class
 com\example\dzialki\models\Plot.class
+com\example\dzialki\listeners\PlotProtectionListener$PlayerInteractionData.class
 com\example\dzialki\Dzialki.class
 com\example\dzialki\listeners\PlotHeartListener.class
 com\example\dzialki\commands\DzialkaCommand.class
