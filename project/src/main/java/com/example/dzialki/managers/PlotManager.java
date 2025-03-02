@@ -41,6 +41,8 @@ public class PlotManager {
         List<String> lore = new ArrayList<>();
         lore.add(ChatColor.GRAY + "Postaw, aby utworzyć działkę");
         lore.add(ChatColor.GRAY + "Chroni obszar 17x17 bloków");
+        lore.add(ChatColor.GRAY + "Możesz powiększyć działkę do 81x81 bloków");
+        lore.add(ChatColor.GRAY + "używając /dzialka powieksz (max 4 razy)");
         meta.setLore(lore);
         heart.setItemMeta(meta);
         return heart;
@@ -174,7 +176,7 @@ public class PlotManager {
 
         // Try to find a safe location outside the plot
         // Start with a location just outside the plot boundary
-        int plotRadius = 8; // 8 blocks in each direction from the heart
+        int plotRadius = plot.getRadius(); // Use dynamic radius
 
         // Try different directions to find a safe spot
         int[][] directions = {

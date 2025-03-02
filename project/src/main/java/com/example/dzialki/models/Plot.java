@@ -15,6 +15,9 @@ public class Plot implements ConfigurationSerializable {
     private final Location heartLocation;
     private Location teleportLocation;
     private final Set<UUID> invitedPlayers;
+    private int expansionLevel = 0; // Track how many times the plot has been expanded
+    private static final int MAX_EXPANSION_LEVEL = 4; // Maximum number of expansions
+    private static final int EXPANSION_BLOCKS = 8; // How many blocks each expansion adds in each direction
 
     public Plot(String tag, UUID owner, Location heartLocation) {
         this.tag = tag;
@@ -28,14 +31,21 @@ public class Plot implements ConfigurationSerializable {
     public Plot(Map<String, Object> map) {
         this.tag = (String) map.get("tag");
         this.owner = UUID.fromString((String) map.get("owner"));
-        
+
+        // Load expansion level
+        if (map.containsKey("expansionLevel")) {
+            this.expansionLevel = ((Number) map.get("expansionLevel")).intValue();
+        } else {
+            this.expansionLevel = 0; // Default for backward compatibility
+        }
+
         // Load heart location
         World world = Bukkit.getWorld((String) map.get("world"));
         double x = (double) map.get("x");
         double y = (double) map.get("y");
         double z = (double) map.get("z");
         this.heartLocation = new Location(world, x, y, z);
-        
+
         // Load teleport location
         if (map.containsKey("teleport")) {
             Map<String, Object> teleportMap = (Map<String, Object>) map.get("teleport");
@@ -49,7 +59,7 @@ public class Plot implements ConfigurationSerializable {
         } else {
             this.teleportLocation = heartLocation.clone().add(0, 1, 0);
         }
-        
+
         // Load members
         this.members = new HashSet<>();
         List<String> membersList = (List<String>) map.get("members");
@@ -58,7 +68,7 @@ public class Plot implements ConfigurationSerializable {
                 members.add(UUID.fromString(member));
             }
         }
-        
+
         // Load invited players
         this.invitedPlayers = new HashSet<>();
         List<String> invitedList = (List<String>) map.getOrDefault("invited", new ArrayList<>());
@@ -76,7 +86,8 @@ public class Plot implements ConfigurationSerializable {
         map.put("x", heartLocation.getX());
         map.put("y", heartLocation.getY());
         map.put("z", heartLocation.getZ());
-        
+        map.put("expansionLevel", expansionLevel); // Save expansion level
+
         // Save teleport location
         Map<String, Object> teleportMap = new HashMap<>();
         teleportMap.put("world", teleportLocation.getWorld().getName());
@@ -86,21 +97,21 @@ public class Plot implements ConfigurationSerializable {
         teleportMap.put("yaw", teleportLocation.getYaw());
         teleportMap.put("pitch", teleportLocation.getPitch());
         map.put("teleport", teleportMap);
-        
+
         // Save members
         List<String> membersList = new ArrayList<>();
         for (UUID member : members) {
             membersList.add(member.toString());
         }
         map.put("members", membersList);
-        
+
         // Save invited players
         List<String> invitedList = new ArrayList<>();
         for (UUID invited : invitedPlayers) {
             invitedList.add(invited.toString());
         }
         map.put("invited", invitedList);
-        
+
         return map;
     }
 
@@ -157,17 +168,37 @@ public class Plot implements ConfigurationSerializable {
         return new HashSet<>(members);
     }
 
+    public int getExpansionLevel() {
+        return expansionLevel;
+    }
+
+    public boolean expand() {
+        if (expansionLevel >= MAX_EXPANSION_LEVEL) {
+            return false; // Already at max expansion
+        }
+        expansionLevel++;
+        return true;
+    }
+
+    public int getRadius() {
+        // Base radius is 8, each expansion adds 8 more
+        return 8 + (expansionLevel * EXPANSION_BLOCKS);
+    }
+
     public boolean isInPlot(Location location) {
         if (!location.getWorld().equals(heartLocation.getWorld())) {
             return false;
         }
-        
+
         int x = location.getBlockX();
         int z = location.getBlockZ();
-        
+
         int heartX = heartLocation.getBlockX();
         int heartZ = heartLocation.getBlockZ();
-        
-        return Math.abs(x - heartX) <= 8 && Math.abs(z - heartZ) <= 8;
+
+        // Use dynamic radius based on expansion level
+        int radius = getRadius();
+
+        return Math.abs(x - heartX) <= radius && Math.abs(z - heartZ) <= radius;
     }
 }

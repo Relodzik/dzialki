@@ -48,7 +48,6 @@ public class DzialkaCommand implements CommandExecutor {
             case "dolacz" -> handleJoinPlot(player, args);
             case "wyrzuc" -> handleKickPlayer(player, args);
             case "opusc" -> handleLeavePlot(player);
-            case "powieksz" -> handleExpandPlot(player);
             default -> sendHelp(player);
         }
 
@@ -66,7 +65,6 @@ public class DzialkaCommand implements CommandExecutor {
         player.sendMessage(ChatColor.YELLOW + "/dzialka dolacz <TAG>" + ChatColor.GRAY + " - Dołącza do działki");
         player.sendMessage(ChatColor.YELLOW + "/dzialka wyrzuc <gracz>" + ChatColor.GRAY + " - Wyrzuca gracza z działki");
         player.sendMessage(ChatColor.YELLOW + "/dzialka opusc" + ChatColor.GRAY + " - Opuszcza działkę (tylko członkowie)");
-        player.sendMessage(ChatColor.YELLOW + "/dzialka powieksz" + ChatColor.GRAY + " - Powiększa działkę (max 4 razy)");
     }
 
     private void handleGivePlotHeart(Player player) {
@@ -333,41 +331,6 @@ public class DzialkaCommand implements CommandExecutor {
             Location safeLocation = plotManager.findSafeLocationOutsidePlot(plot);
             player.teleport(safeLocation);
             player.sendMessage(ChatColor.YELLOW + "Zostałeś teleportowany poza teren działki!");
-        }
-    }
-
-    private void handleExpandPlot(Player player) {
-        Plot plot = plotManager.getPlayerPlot(player.getUniqueId());
-
-        if (plot == null) {
-            player.sendMessage(ChatColor.RED + "Nie posiadasz działki!");
-            return;
-        }
-
-        if (!plot.isOwner(player.getUniqueId())) {
-            player.sendMessage(ChatColor.RED + "Tylko właściciel działki może ją powiększyć!");
-            return;
-        }
-
-        int currentLevel = plot.getExpansionLevel();
-
-        if (currentLevel >= 4) {
-            player.sendMessage(ChatColor.RED + "Twoja działka osiągnęła już maksymalny rozmiar (81x81)!");
-            return;
-        }
-
-        int currentSize = 17 + (currentLevel * 16); // Calculate current size
-        int newSize = currentSize + 16; // New size after expansion
-
-        if (plot.expand()) {
-            player.sendMessage(ChatColor.GREEN + "Twoja działka została powiększona!");
-            player.sendMessage(ChatColor.YELLOW + "Nowy rozmiar działki: " + newSize + "x" + newSize + " bloków");
-            player.sendMessage(ChatColor.YELLOW + "Poziom rozszerzenia: " + plot.getExpansionLevel() + "/4");
-
-            // Save plots to ensure the expansion is persisted
-            plugin.getPlotManager().savePlots();
-        } else {
-            player.sendMessage(ChatColor.RED + "Nie udało się powiększyć działki!");
         }
     }
 }

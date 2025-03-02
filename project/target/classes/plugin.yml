@@ -2,7 +2,7 @@ name: Dzialki
 version: '1.0-SNAPSHOT'
 main: com.example.dzialki.Dzialki
 api-version: '1.21'
-authors: [YourName]
+authors: [relod]
 description: Plugin dodający działki na serwer Minecraft
 commands:
   dzialka:
