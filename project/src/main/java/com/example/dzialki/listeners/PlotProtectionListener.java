@@ -6,6 +6,7 @@ import com.example.dzialki.models.Plot;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Player;
@@ -16,7 +17,9 @@ import org.bukkit.event.block.*;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerBucketEmptyEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.event.block.Action;
 
 import java.util.*;
 
@@ -30,6 +33,16 @@ public class PlotProtectionListener implements Listener {
     private final Map<UUID, Long> playerLastRedstoneActivity = new HashMap<>();
     private final long INTERACTION_TIMEOUT = 300000; // 5 minut w milisekundach
 
+    // Cooldown dla wiadomości aby zapobiec duplikatom
+    private final Map<UUID, Long> interactionMessageCooldown = new HashMap<>();
+    private final Map<UUID, Long> breakMessageCooldown = new HashMap<>();
+    private final Map<UUID, Long> placeMessageCooldown = new HashMap<>();
+    private final long MESSAGE_COOLDOWN = 500; // 500 ms cooldown
+
+    // Śledzenie źródeł cieczy
+    private final Map<String, UUID> liquidSources = new HashMap<>();
+    private final long LIQUID_SOURCE_TIMEOUT = 300000; // 5 minut
+
     public PlotProtectionListener(Dzialki plugin) {
         this.plugin = plugin;
         this.plotManager = plugin.getPlotManager();
@@ -42,6 +55,20 @@ public class PlotProtectionListener implements Listener {
 
             playerLastRedstoneActivity.entrySet().removeIf(entry ->
                     (currentTime - entry.getValue()) > INTERACTION_TIMEOUT);
+
+            // Czyść przestarzałe cooldowny wiadomości
+            interactionMessageCooldown.entrySet().removeIf(entry ->
+                    (currentTime - entry.getValue()) > MESSAGE_COOLDOWN);
+            breakMessageCooldown.entrySet().removeIf(entry ->
+                    (currentTime - entry.getValue()) > MESSAGE_COOLDOWN);
+            placeMessageCooldown.entrySet().removeIf(entry ->
+                    (currentTime - entry.getValue()) > MESSAGE_COOLDOWN);
+
+            // Czyść stare źródła cieczy
+            liquidSources.entrySet().removeIf(entry -> {
+                Long timestamp = playerLastRedstoneActivity.get(entry.getValue());
+                return timestamp == null || (currentTime - timestamp) > LIQUID_SOURCE_TIMEOUT;
+            });
         }, 6000L, 6000L); // Uruchom co 5 minut (6000 ticków)
     }
 
@@ -66,7 +93,15 @@ public class PlotProtectionListener implements Listener {
 
         if (plot != null && !plot.isMember(player.getUniqueId()) && !player.hasPermission("dzialka.admin.bypass")) {
             event.setCancelled(true);
-            player.sendMessage(ChatColor.RED + "Nie możesz niszczyć bloków na tej działce!");
+
+            // Sprawdź cooldown przed wysłaniem wiadomości
+            long currentTime = System.currentTimeMillis();
+            Long lastMessageTime = breakMessageCooldown.get(player.getUniqueId());
+
+            if (lastMessageTime == null || (currentTime - lastMessageTime) > MESSAGE_COOLDOWN) {
+                player.sendMessage(ChatColor.RED + "Nie możesz niszczyć bloków na tej działce!");
+                breakMessageCooldown.put(player.getUniqueId(), currentTime);
+            }
         }
     }
 
@@ -78,9 +113,29 @@ public class PlotProtectionListener implements Listener {
         Block block = event.getBlock();
         Plot plot = plotManager.getPlotAt(block.getLocation());
 
+        // Śledzenie umieszczonych źródeł cieczy
+        if (block.getType() == Material.WATER || block.getType() == Material.LAVA) {
+            liquidSources.put(getBlockKey(block), player.getUniqueId());
+        }
+
+        // Sprawdź, czy to wiadro z wodą/lawą (dodatkowe śledzenie)
+        ItemStack item = event.getItemInHand();
+        if (item.getType() == Material.WATER_BUCKET || item.getType() == Material.LAVA_BUCKET) {
+            // Zapisz również informację o cieczy w miejscu wylania
+            liquidSources.put(getBlockKey(block), player.getUniqueId());
+        }
+
         if (plot != null && !plot.isMember(player.getUniqueId()) && !player.hasPermission("dzialka.admin.bypass")) {
             event.setCancelled(true);
-            player.sendMessage(ChatColor.RED + "Nie możesz stawiać bloków na tej działce!");
+
+            // Sprawdź cooldown przed wysłaniem wiadomości
+            long currentTime = System.currentTimeMillis();
+            Long lastMessageTime = placeMessageCooldown.get(player.getUniqueId());
+
+            if (lastMessageTime == null || (currentTime - lastMessageTime) > MESSAGE_COOLDOWN) {
+                player.sendMessage(ChatColor.RED + "Nie możesz stawiać bloków na tej działce!");
+                placeMessageCooldown.put(player.getUniqueId(), currentTime);
+            }
         }
     }
 
@@ -93,6 +148,19 @@ public class PlotProtectionListener implements Listener {
 
         if (block == null) return;
 
+        // Skip interactions that are handled by block break/place events
+        // This prevents duplicate messages
+        if (event.getAction() == Action.LEFT_CLICK_BLOCK) {
+            // Skip for block breaking - BlockBreakEvent will handle it
+            return;
+        }
+
+        // For right clicks, only handle actual interactions (not block placement)
+        if (event.getAction() == Action.RIGHT_CLICK_BLOCK && event.isBlockInHand()) {
+            // Skip for block placement - BlockPlaceEvent will handle it
+            return;
+        }
+
         // Zapisujemy globalną aktywność redstone tego gracza
         playerLastRedstoneActivity.put(player.getUniqueId(), System.currentTimeMillis());
 
@@ -104,9 +172,6 @@ public class PlotProtectionListener implements Listener {
             // Użyj współrzędnych bloku jako klucza
             String blockKey = getBlockKey(block);
             lastRedstoneInteraction.put(blockKey, interactionData);
-
-            plugin.getLogger().info("[Debug] Gracz " + player.getName() + " wszedł w interakcję z " +
-                    block.getType() + " w " + blockKey);
 
             // Rozpocznij śledzenie wszystkich połączonych komponentów redstone
             trackRedstoneWireConnections(block, interactionData);
@@ -133,7 +198,84 @@ public class PlotProtectionListener implements Listener {
 
         if (plot != null && !plot.isMember(player.getUniqueId()) && !player.hasPermission("dzialka.admin.bypass")) {
             event.setCancelled(true);
-            player.sendMessage(ChatColor.RED + "Nie możesz wchodzić w interakcję z blokami na tej działce!");
+
+            // Pokazuj komunikat tylko dla bloków interaktywnych i tylko jeśli nie jest na cooldownie
+            if (isInteractiveBlock(block.getType())) {
+                long currentTime = System.currentTimeMillis();
+                Long lastMessageTime = interactionMessageCooldown.get(player.getUniqueId());
+
+                if (lastMessageTime == null || (currentTime - lastMessageTime) > MESSAGE_COOLDOWN) {
+                    player.sendMessage(ChatColor.RED + "Nie możesz wchodzić w interakcję z blokami na tej działce!");
+                    interactionMessageCooldown.put(player.getUniqueId(), currentTime);
+                }
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onBlockFromTo(BlockFromToEvent event) {
+        if (event.isCancelled()) return;
+
+        Block fromBlock = event.getBlock();
+        Block toBlock = event.getToBlock();
+
+        // Sprawdź, czy to przepływ cieczy
+        Material fromType = fromBlock.getType();
+        if (fromType != Material.WATER && fromType != Material.LAVA) {
+            return;
+        }
+
+        // Sprawdź, czy ciecz przepływa na działkę
+        Plot fromPlot = plotManager.getPlotAt(fromBlock.getLocation());
+        Plot toPlot = plotManager.getPlotAt(toBlock.getLocation());
+
+        // Jeśli płynie między tymi samymi działkami, zawsze pozwalamy
+        if (fromPlot != null && toPlot != null && fromPlot.getTag().equals(toPlot.getTag())) {
+            return; // Pozwól na przepływ w obrębie tej samej działki
+        }
+
+        // Ciecz przepływa z zewnątrz na działkę
+        if (fromPlot == null && toPlot != null) {
+            // Blokuj przepływ cieczy z zewnątrz na działkę
+            event.setCancelled(true);
+            return;
+        }
+
+        // Ciecz przepływa z jednej działki na drugą
+        if (fromPlot != null && toPlot != null && !fromPlot.getTag().equals(toPlot.getTag())) {
+            // Blokuj przepływ między różnymi działkami
+            event.setCancelled(true);
+            return;
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onPlayerBucketEmpty(PlayerBucketEmptyEvent event) {
+        if (event.isCancelled()) return;
+
+        Player player = event.getPlayer();
+        Block block = event.getBlock();
+        Material bucket = event.getBucket();
+
+        // Śledź wylanie wody/lawy z wiadra
+        if (bucket == Material.WATER_BUCKET || bucket == Material.LAVA_BUCKET) {
+            // Zapisz informację o graczu, który wylał ciecz
+            liquidSources.put(getBlockKey(block), player.getUniqueId());
+        }
+
+        // Sprawdź, czy gracz ma prawo do wylania cieczy
+        Plot plot = plotManager.getPlotAt(block.getLocation());
+        if (plot != null && !plot.isMember(player.getUniqueId()) && !player.hasPermission("dzialka.admin.bypass")) {
+            event.setCancelled(true);
+
+            // Sprawdź cooldown przed wysłaniem wiadomości
+            long currentTime = System.currentTimeMillis();
+            Long lastMessageTime = placeMessageCooldown.get(player.getUniqueId());
+
+            if (lastMessageTime == null || (currentTime - lastMessageTime) > MESSAGE_COOLDOWN) {
+                player.sendMessage(ChatColor.RED + "Nie możesz używać wiaderka na tej działce!");
+                placeMessageCooldown.put(player.getUniqueId(), currentTime);
+            }
         }
     }
 
@@ -202,15 +344,6 @@ public class PlotProtectionListener implements Listener {
         // Pobierz UUID gracza, który aktywował piston
         UUID playerUUID = getLastInteractionPlayer(pistonBlock);
 
-        // Rejestrujemy dla celów debugowania
-        if (playerUUID != null) {
-            Player player = Bukkit.getPlayer(playerUUID);
-            String playerName = player != null ? player.getName() : playerUUID.toString();
-            plugin.getLogger().info("[Debug] Piston aktywowany przez: " + playerName);
-        } else {
-            plugin.getLogger().info("[Debug] Piston aktywowany, ale nie można zidentyfikować gracza");
-        }
-
         Plot pistonPlot = plotManager.getPlotAt(pistonBlock.getLocation());
 
         // Sprawdź, czy jakieś bloki są wpychane na działkę
@@ -235,7 +368,6 @@ public class PlotProtectionListener implements Listener {
 
                 // W przeciwnym razie, anuluj wydarzenie
                 event.setCancelled(true);
-                plugin.getLogger().info("[Debug] Piston zablokowany: próba wpychania bloku na działkę bez uprawnień");
                 return;
             }
         }
@@ -253,7 +385,6 @@ public class PlotProtectionListener implements Listener {
 
                 // W przeciwnym razie, anuluj wydarzenie
                 event.setCancelled(true);
-                plugin.getLogger().info("[Debug] Piston zablokowany: próba wysuwania bloku z działki bez uprawnień");
                 return;
             }
 
@@ -266,7 +397,6 @@ public class PlotProtectionListener implements Listener {
 
                 // W przeciwnym razie, anuluj wydarzenie
                 event.setCancelled(true);
-                plugin.getLogger().info("[Debug] Piston zablokowany: próba przesuwania bloków między działkami bez uprawnień");
                 return;
             }
         }
@@ -291,7 +421,6 @@ public class PlotProtectionListener implements Listener {
 
             // W przeciwnym razie, anuluj wydarzenie
             event.setCancelled(true);
-            plugin.getLogger().info("[Debug] Piston zablokowany: głowica wchodzi na działkę bez uprawnień");
         }
     }
 
@@ -301,14 +430,6 @@ public class PlotProtectionListener implements Listener {
 
         Block pistonBlock = event.getBlock();
         UUID playerUUID = getLastInteractionPlayer(pistonBlock);
-
-        // Rejestrujemy dla celów debugowania
-        if (playerUUID != null) {
-            Player player = Bukkit.getPlayer(playerUUID);
-            String playerName = player != null ? player.getName() : playerUUID.toString();
-            plugin.getLogger().info("[Debug] Piston (cofanie) aktywowany przez: " + playerName);
-        }
-
         Plot pistonPlot = plotManager.getPlotAt(pistonBlock.getLocation());
 
         // Sprawdź, czy jakieś bloki są wciągane z działki
@@ -324,7 +445,6 @@ public class PlotProtectionListener implements Listener {
 
                 // W przeciwnym razie, anuluj wydarzenie
                 event.setCancelled(true);
-                plugin.getLogger().info("[Debug] Piston (cofanie) zablokowany: próba wciągania bloku z działki bez uprawnień");
                 return;
             }
 
@@ -337,7 +457,6 @@ public class PlotProtectionListener implements Listener {
 
                 // W przeciwnym razie, anuluj wydarzenie
                 event.setCancelled(true);
-                plugin.getLogger().info("[Debug] Piston (cofanie) zablokowany: próba przesuwania bloków między działkami bez uprawnień");
                 return;
             }
         }
@@ -351,16 +470,6 @@ public class PlotProtectionListener implements Listener {
 
         // Bardziej dogłębne szukanie gracza - najpierw sprawdźmy sam dyspenser
         UUID playerUUID = getLastInteractionPlayer(dispenserBlock);
-
-        // Rejestrujemy dla celów debugowania
-        if (playerUUID != null) {
-            Player player = Bukkit.getPlayer(playerUUID);
-            String playerName = player != null ? player.getName() : playerUUID.toString();
-            plugin.getLogger().info("[Debug] Dyspenser aktywowany przez: " + playerName);
-        } else {
-            plugin.getLogger().info("[Debug] Dyspenser aktywowany, ale nie można zidentyfikować gracza");
-        }
-
         Plot dispenserPlot = plotManager.getPlotAt(dispenserBlock.getLocation());
 
         // Uzyskaj kierunek, w którym dyspenser jest skierowany
@@ -377,14 +486,12 @@ public class PlotProtectionListener implements Listener {
 
         // Jeśli znamy gracza i jest on członkiem docelowej działki, zawsze pozwól na to
         if (playerUUID != null && targetPlot != null && targetPlot.isMember(playerUUID)) {
-            plugin.getLogger().info("[Debug] Dyspenser DOZWOLONY: członek działki ma prawo do dyspensera");
             return;  // Pozwól działać dyspenerowi
         }
 
         // Jeśli dyspenser jest poza działką i wyrzuca na działkę
         if (dispenserPlot == null && targetPlot != null) {
             // Jeśli nie znamy kto aktywował lub nie jest członkiem działki docelowej
-            plugin.getLogger().info("[Debug] Dyspenser zablokowany: próba wyrzucania na działkę bez uprawnień");
             event.setCancelled(true);
             return;
         }
@@ -392,7 +499,6 @@ public class PlotProtectionListener implements Listener {
         // Jeśli dyspenser jest na jednej działce i wyrzuca na inną działkę
         if (dispenserPlot != null && targetPlot != null && !dispenserPlot.getTag().equals(targetPlot.getTag())) {
             // Jeśli nie znamy kto aktywował lub nie jest członkiem obu działek
-            plugin.getLogger().info("[Debug] Dyspenser zablokowany: próba wyrzucania między działkami bez uprawnień");
             event.setCancelled(true);
             return;
         }
@@ -421,7 +527,6 @@ public class PlotProtectionListener implements Listener {
 
                     // W przeciwnym razie, anuluj wydarzenie
                     event.setCancelled(true);
-                    plugin.getLogger().info("[Debug] Dyspenser (wiadro) zablokowany: przepływ wchodzi na działkę bez uprawnień");
                     return;
                 }
             }
@@ -503,7 +608,6 @@ public class PlotProtectionListener implements Listener {
         PlayerInteractionData data = lastRedstoneInteraction.get(blockKey);
 
         if (data != null) {
-            plugin.getLogger().info("[Debug] Znaleziono bezpośrednią interakcję dla bloku: " + block.getType());
             return data.playerUUID;
         }
 
@@ -521,14 +625,10 @@ public class PlotProtectionListener implements Listener {
             }
 
             if (mostRecentPlayer != null) {
-                Player player = Bukkit.getPlayer(mostRecentPlayer);
-                String playerName = player != null ? player.getName() : mostRecentPlayer.toString();
-                plugin.getLogger().info("[Debug] Nie znaleziono bezpośredniej interakcji, używam najnowszej aktywności: " + playerName);
                 return mostRecentPlayer;
             }
         }
 
-        plugin.getLogger().info("[Debug] Nie znaleziono żadnej aktywności redstone dla bloku: " + block.getType());
         return null;
     }
 
@@ -586,5 +686,126 @@ public class PlotProtectionListener implements Listener {
                 name.contains("DETECTOR_RAIL") ||
                 name.contains("RAIL") ||
                 name.contains("TRIPWIRE");
+    }
+
+    /**
+     * Sprawdza, czy materiał to blok interaktywny
+     * @param material Materiał do sprawdzenia
+     * @return True jeśli to blok interaktywny, false w przeciwnym razie
+     */
+    private boolean isInteractiveBlock(org.bukkit.Material material) {
+        String name = material.name();
+        return name.contains("DOOR") ||
+                name.contains("GATE") ||
+                name.contains("CHEST") ||
+                name.contains("BARREL") ||
+                name.contains("SHULKER") ||
+                name.contains("BUTTON") ||
+                name.contains("LEVER") ||
+                name.contains("TRAPDOOR") ||
+                name.contains("BED") ||
+                name.contains("ANVIL") ||
+                name.contains("GRINDSTONE") ||
+                name.contains("LOOM") ||
+                name.contains("SMITHING") ||
+                name.contains("CRAFTING") ||
+                name.contains("FURNACE") ||
+                name.contains("BLAST") ||
+                name.contains("SMOKER") ||
+                name.contains("BREWING") ||
+                name.contains("ENCHANT") ||
+                name.contains("JUKEBOX") ||
+                name.contains("BEACON") ||
+                name.contains("BELL") ||
+                name.contains("LECTERN") ||
+                name.contains("HOPPER") ||
+                name.contains("DISPENSER") ||
+                name.contains("DROPPER") ||
+                name.contains("REPEATER") ||
+                name.contains("COMPARATOR") ||
+                name.contains("DAYLIGHT_DETECTOR") ||
+                name.contains("NOTE_BLOCK") ||
+                name.contains("FENCE_GATE") ||
+                name.contains("RESPAWN_ANCHOR") ||
+                name.contains("COMMAND_BLOCK") ||
+                name.contains("CARTOGRAPHY") ||
+                name.contains("COMPOSTER") ||
+                name.contains("STONECUTTER") ||
+                name.contains("CAMPFIRE") ||
+                name.contains("CANDLE") ||
+                name.contains("CAKE") ||
+                name.contains("ITEM_FRAME") ||
+                name.contains("FLOWER_POT");
+    }
+
+    /**
+     * Próbuje znaleźć gracza, który postawił ciecz, poprzez przeanalizowanie źródła
+     * @param block Blok z cieczą
+     * @return UUID gracza lub null, jeśli nie udało się ustalić
+     */
+    // Poniższa metoda może być usunięta, ponieważ nie jest już używana
+    private UUID findLiquidPlacer(Block block) {
+        // Sprawdź, czy znamy źródło tego konkretnego bloku
+        String blockKey = getBlockKey(block);
+        UUID directPlacer = liquidSources.get(blockKey);
+        if (directPlacer != null) {
+            return directPlacer;
+        }
+
+        // Jeśli nie znamy bezpośredniego źródła, spróbuj znaleźć źródło cieczy w okolicy
+        Material type = block.getType();
+
+        // Najpierw sprawdźmy najbliższe bloki (może tam jest źródło)
+        for (int x = -1; x <= 1; x++) {
+            for (int y = 0; y >= -1; y--) { // Priorytetyzuj sprawdzanie na tym samym poziomie i powyżej
+                for (int z = -1; z <= 1; z++) {
+                    Block nearby = block.getRelative(x, y, z);
+
+                    // Sprawdź, czy to źródło cieczy
+                    if (nearby.getType() == type && nearby.getBlockData() instanceof org.bukkit.block.data.Levelled) {
+                        org.bukkit.block.data.Levelled levelled = (org.bukkit.block.data.Levelled) nearby.getBlockData();
+                        if (levelled.getLevel() == 0) {  // To źródło cieczy
+                            String sourceKey = getBlockKey(nearby);
+                            UUID sourcePlacer = liquidSources.get(sourceKey);
+                            if (sourcePlacer != null) {
+                                return sourcePlacer;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Jeśli nadal nie znaleźliśmy, wykonaj szersze wyszukiwanie
+        int radius = 8; // Maksymalny promień przepływu cieczy
+
+        for (int x = -radius; x <= radius; x++) {
+            for (int y = -radius; y <= radius; y++) {
+                for (int z = -radius; z <= radius; z++) {
+                    // Pomijamy bloki, które są zbyt daleko (używamy odległości Manhattan)
+                    if (Math.abs(x) + Math.abs(y) + Math.abs(z) > radius) continue;
+
+                    Block potentialSource = block.getRelative(x, y, z);
+
+                    // Sprawdź, czy to ten sam typ cieczy
+                    if (potentialSource.getType() == type) {
+                        // Sprawdź, czy to źródło cieczy
+                        if (potentialSource.getBlockData() instanceof org.bukkit.block.data.Levelled) {
+                            org.bukkit.block.data.Levelled levelled = (org.bukkit.block.data.Levelled) potentialSource.getBlockData();
+                            if (levelled.getLevel() == 0) {  // To źródło cieczy
+                                String sourceKey = getBlockKey(potentialSource);
+                                UUID sourcePlacer = liquidSources.get(sourceKey);
+                                if (sourcePlacer != null) {
+                                    return sourcePlacer;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Jeśli nie udało się znaleźć źródła, zwróć null
+        return null;
     }
 }
